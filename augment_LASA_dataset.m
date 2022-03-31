@@ -1,31 +1,35 @@
 %% 
 % Compute a feature trajectory augmenting the LASA HandWriting Dataset
+%
 % The LASA dataset is available at: 
 % https://bitbucket.org/khansari/lasahandwritingdataset/src/master/
 %
 % This function uses the Machine Vision Toolbox v4.2.1 from P. Corke
 % See: https://petercorke.com/toolboxes/machine-vision-toolbox/
 
+%%
 clear;
 close all;
 
-addpath(genpath('LASA_hand_writing_dataset/'));
+addpath(genpath('datasets/'));
 
 modelPath = 'LASA_hand_writing_dataset/';
 
 %% Visual servoing setup
 % Create a default camera (see 'CentralCamera' documentation)
 cam = CentralCamera('default');
-% Create a dummy grid of 4 points (depth must be ~= 0)
-P = mkgrid(2, 0.5, 'pose', SE3(0, 0, 5));
+% Create a dummy grid of 4 points
+P = [-0.2500, -0.2500, 0.2500,  0.2500; ...
+     -0.2500,  0.2500, 0.2500, -0.2500; ...
+      5.0000,  5.0000, 5.0000,  5.0000 ];
 
 depth_goal = [5, 5, 5, 5]; % Final depth
 
 %% Preprocess demonstrations
-demoNum = 1:7;
-dt = 0.0025;
-PLOT = 1;
-Tcam = cam.T.double;
+demoNum = 1:7; % Consider all LASA demonstrations
+dt = 0.0025; % Sampling time
+PLOT = 1; % Plot results
+Tcam = cam.T.double; % Initial pose of the dummy camera
 posGoal = [1, 1, 1]; % Goal position (arbitrary)
 oriGoal = cam.T.torpy'; % Orientation is fixed
 for i=4:30
@@ -55,7 +59,8 @@ for i=4:30
         % Store the sampling time
         demoVS{demoIt}.dt = dt;        
         
-       if(PLOT)
+		% Plot generated data
+        if(PLOT)
             figure(i)
             subplot(1,2,1)
             plot(demoVS{demoIt}.pos(1,:), demoVS{demoIt}.pos(2,:), 'k')
@@ -69,13 +74,13 @@ for i=4:30
             plot(s_dem(3,:), s_dem(4,:), 'r')
             plot(s_dem(5,:), s_dem(6,:), 'b')
             plot(s_dem(7,:), s_dem(8,:), 'm')
-       end
+        end
         
-       % Add point grid and depth
-       demoVS{demoIt}.point_grid = P;
-       demoVS{demoIt}.depth_goal = depth_goal;
+        % Add point grid and depth
+        demoVS{demoIt}.point_grid = P;
+        demoVS{demoIt}.depth_goal = depth_goal;
     end
     
-    filename = ['LASA_HandWriting_VS/DataSet/' name '_VS.mat'];
+    filename = ['datasets/LASA_HandWriting_VS/DataSet/' name '_VS.mat'];
     save(filename, 'demoVS')
 end
