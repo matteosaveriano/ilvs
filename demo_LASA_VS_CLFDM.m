@@ -145,7 +145,7 @@ for d=demoNum
     cam.T = SE3(p_clfdm(1,1), p_clfdm(2,1), p_clfdm(3,1));
     error = zeros(demo_len-1, 8);
     s_clfdm = zeros(8, demo_len-1);    
-    for i=1:demo_len-1
+    for i=1:demo_len-1 % Run a bit longer to test for convergence
         s_curr = cam.project(P);
 
         % Store features for plotting
