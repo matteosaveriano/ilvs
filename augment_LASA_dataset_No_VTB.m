@@ -4,34 +4,38 @@
 % The LASA dataset is available at: 
 % https://bitbucket.org/khansari/lasahandwritingdataset/src/master/
 %
-% This function uses the Machine Vision Toolbox v4.2.1 from P. Corke
-% See: https://petercorke.com/toolboxes/machine-vision-toolbox/
 
 %%
 clear;
 close all;
 
 addpath(genpath('datasets/'));
+addpath(genpath('lib/'));
 
 modelPath = 'LASA_hand_writing_dataset/';
 
 %% Visual servoing setup
-% Create a default camera (see 'CentralCamera' documentation)
-cam = CentralCamera('default');
 % Create a dummy grid of 4 points
 P = [-0.2500, -0.2500, 0.2500,  0.2500; ...
      -0.2500,  0.2500, 0.2500, -0.2500; ...
       5.0000,  5.0000, 5.0000,  5.0000 ];
-  
+% Create a dummy pinhole camera
+% Camera matrix
+KP = zeros(3,4);  
+KP(1,1) = 800;
+KP(2,2) = 800;
+KP(3,3) = 1;
+KP(1:2,3) = 512;
+
 depth_goal = [5, 5, 5, 5]; % Final depth
 
 %% Preprocess demonstrations
 demoNum = 1:7; % Consider all LASA demonstrations
 dt = 0.0025; % Sampling time
 PLOT = 1; % Plot results
-Tcam = cam.T.double; % Initial pose of the dummy camera
-posGoal = [1, 1, 1]; % Goal position (arbitrary)
-oriGoal = cam.T.torpy'; % Orientation is fixed
+Tcam = eye(4); % Initial pose of the dummy camera
+posGoal = ones(3,1); % Goal position (arbitrary)
+oriGoal = zeros(3,1); % Orientation is fixed
 for i=4:30
     % Load demonstrations
     [demos, ~, name] = load_LASA_models(modelPath, i);
@@ -40,7 +44,7 @@ for i=4:30
     for demoIt=demoNum   
         numData = size(demos{demoIt}.pos, 2);
         % Conver to meters and shift to goal
-        demoVS{demoIt}.pos(1:2,:) = demos{demoIt}.pos./100 + repmat(posGoal(1:2)', 1, numData);
+        demoVS{demoIt}.pos(1:2,:) = demos{demoIt}.pos./100 + repmat(posGoal(1:2,1), 1, numData);
         % Add third dimension (linear motion)
         demoVS{demoIt}.pos(3,:) = linspace(Tcam(3,4), posGoal(3), numData);
         % Fixed orientation
@@ -48,12 +52,12 @@ for i=4:30
         % Compute Cartesian veloctiy
         demoVS{demoIt}.vel = [diff(demoVS{demoIt}.pos,[],2)./dt zeros(6,1)];
         
-        % Project to image plane
         for n=1:numData
-            cam.T = SE3(demoVS{demoIt}.pos(1,n), demoVS{demoIt}.pos(2,n), demoVS{demoIt}.pos(3,n));
-            
-            sCurr = cam.project(P);
-               
+            % Update camera pose
+            Tcam(1:3,4) = [demoVS{demoIt}.pos(1,n); demoVS{demoIt}.pos(2,n); demoVS{demoIt}.pos(3,n)];
+            % Project to image plane
+            sCurr = cameraPoseToImagePoints(Tcam, P, KP);
+            % Store data   
             demoVS{demoIt}.feat(:,n) = reshape(sCurr, 8, 1);
         end
         % Store the sampling time
