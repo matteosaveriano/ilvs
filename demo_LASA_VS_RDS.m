@@ -1,9 +1,6 @@
 %% 
 % Run RDS approach on the LASA Visual Servoing HandWriting Dataset
 %
-% This function uses the Machine Vision Toolbox v4.2.1 from P. Corke
-% See: https://petercorke.com/toolboxes/machine-vision-toolbox/
-
 %%
 clear;
 close all;
@@ -11,12 +8,16 @@ close all;
 addpath(genpath('lib'))
 addpath(genpath('datasets'))
 
-%% Camera and feature setup
-% Create a default camera (see 'CentralCamera' documentation)
-cam = CentralCamera('default');
+%% Create a dummy pinhole camera
+% Camera matrix
+KP = zeros(3,4);  
+KP(1,1) = 800;
+KP(2,2) = 800;
+KP(3,3) = 1;
+KP(1:2,3) = 512;
           
 %% Learning and reproduction loop
-motionClass = 5; % Which of the 30 motions to use
+motionClass = 7; % Which of the 30 motions to use
 demoNum = 1:3; % Consider only the first 3 demonstrations
 samplingRate = 10; % Resample the trajectory to make learning faster
 
@@ -28,8 +29,7 @@ sInd = [1:samplingRate:demoSize demoSize]; % Use only points at 'sInd'
     
 % Retrieve point grid, goal depth, and sampling time
 P = demos{1}.point_grid;
-depth_goal = demos{1}.depth_goal; % Final depth
-    
+depthGoal = demos{1}.depth_goal; % Final depth
 
 % Initialize some variables to store results
 pos = [];
@@ -54,23 +54,23 @@ for i=demoNum
     poseInitAll = [poseInitAll; demos{i}.pos(:,1)'];
 end
     
-demoLen = size(feat, 1);
+allDemoLen = size(feat, 1);
 featStar = mean(featStarAll);
 poseStar = mean(poseStarAll);
     
-featErr = feat - repmat(featStar, demoLen, 1);
-poseErr = zeros(demoLen, 6);
-uErr = zeros(demoLen, 6);
+featErr = feat - repmat(featStar, allDemoLen, 1);
+poseErr = zeros(allDemoLen, 6);
+uErr = zeros(allDemoLen, 6);
 
 lambda_ = 1; % Classic visual servoing gain
 
 % Compute image Jacobian at goal
-Lgoal = cam.visjac_p(reshape(featStar, 2, 4), depth_goal);
+Lgoal = visualJacobianMatrix(reshape(featStar, 2, 4), depthGoal, KP);
 LpGoal = pinv(Lgoal);
-for i=1:demoLen
+
+for i=1:allDemoLen
     % Compute Lp*e for each point
     poseErr(i,:) = (LpGoal*featErr(i,:).').';
-
     % Compute corrective control
     uErr(i,:) = vel(i,:) + lambda_*poseErr(i,:);
 end
@@ -84,91 +84,92 @@ nbStates = 11; % GMM components
 [Priors, Mu, Sigma] = EM_init_kmeans(Data, nbStates);
 [Priors, Mu, Sigma] = EM(Data, Priors, Mu, Sigma);   
 
-u_rds_handle = @(x) GMR(Priors, Mu, Sigma, x, in, out);
+uRdsHandle = @(x) GMR(Priors, Mu, Sigma, x, in, out);
 
 %% Simulate
-demo_len = demoLen/length(demoNum);
-s_star = featStar.';% Goal in feature space
+demoLen = allDemoLen/length(demoNum);
+sStar = featStar.';% Goal in feature space
+Tcam = eye(4); % Initial pose of the dummy camera
 figure;    
 for d=demoNum
-    p_rds = zeros(3, demo_len);
-    p_rds(:,1) = poseInitAll(d,1:3)';
-    v_rds = [0, 0, 0, 0, 0, 0]';
-    u_rds  = zeros(6,demo_len-1);
+    pRds = zeros(3, demoLen);
+    pRds(:,1) = poseInitAll(d,1:3)';
+    vRds = zeros(6, demoLen);
+    uRds  = zeros(6,demoLen-1);
+    % Update camera position (orientation is fixed)   
+    Tcam(1:3,4) = [pRds(1,1), pRds(2,1), pRds(3,1)];
         
-    cam.T = SE3(p_rds(1,1), p_rds(2,1), p_rds(3,1));
-        
-    error = zeros(demo_len-1, 8);
-    s_rds = zeros(8, demo_len-1);
-    for i=1:demo_len-1 % Run a bit longer to test for convergence
-        s_curr = cam.project(P);
+    error = zeros(demoLen-1, 8);
+    sRds = zeros(8, demoLen-1);
+    for i=1:demoLen-1 % Run a bit longer to test for convergence
+        % Project to image plane
+        sCurr = cameraPoseToImagePoints(Tcam, P, KP);
         % Store features for plotting
-        s_rds(:,i) = reshape(s_curr, 8, 1);
-
-        error(i,:) = reshape(s_curr, 8, 1) - s_star;
-
-        u_rds(:,i) = u_rds_handle(LpGoal*error(i,:).');
+        sRds(:,i) = reshape(sCurr, 8, 1);
+        % Compute image error
+        error(i,:) = reshape(sCurr, 8, 1) - sStar;
+        % Compute RDS reshaping term
+        uRds(:,i) = uRdsHandle(LpGoal*error(i,:).');
         % The corrective term in RDS should vanish to retrieve stability. 
         % Here we do it discontinuously. Use a smooth function in real cases 
-        if i>=demo_len-1
-            u_rds(:,i) = zeros(6, 1);
+        if i>=demoLen-1
+            uRds(:,i) = zeros(6, 1);
         end
-
+        % Compute RDS velocity
         e_ = error(i,:).';
-        v_rds(:,i) = -lambda_* LpGoal *e_ + u_rds(:,i);
+        vRds(:,i) = -lambda_* LpGoal *e_ + uRds(:,i);
             
         % Update camera pose
-        cam.T = cam.T.increment(v_rds(:,i)*dt_);
-        p_rds(:, i+1) = cam.T.t;
+         Tcam(1:3,4) = Tcam(1:3,4) + vRds(1:3,i)*dt_;
+        pRds(:, i+1) =Tcam(1:3,4);
     end
-    v_rds(:,end+1) = [0, 0, 0, 0, 0, 0]';
-
         
-        PLOT = 1;
-        colorGreen = [0 127 0]/255;
-        if(PLOT)
-            %figure(modIt)
-            h1 = figure(1);
-            plot(p_rds(1,:), p_rds(2,:), 'color',colorGreen, 'LineWidth', 3)
-            hold on
-            plot(cameraPose{d}(1,:), cameraPose{d}(2,:), 'k--', 'LineWidth', 3)
+    %% Plot results
+    colorGreen = [0 127 0]/255;
+    
+    h1 = subplot(1,2,1);
+    title('Cartesian position')
+    plot(pRds(1,:), pRds(2,:), 'color', colorGreen, 'LineWidth', 3)
+    hold on
+    
+    plot(cameraPose{d}(1,1), cameraPose{d}(2,1), 'ko', 'MarkerSize', 15, 'MarkerFaceColor', 'k')
+    plot(cameraPose{d}(1,:), cameraPose{d}(2,:), 'k--', 'LineWidth', 3)
+    plot(cameraPose{d}(1,end), cameraPose{d}(2,end), 'kx', 'MarkerSize', 15, 'LineWidth', 3)
+    
+    set(h1, 'YDir','reverse');
+    ax = h1;
+    ax.XLim = ax.XLim + [-.1, .1];
+    ax.YLim = ax.YLim + [-.1, .1];
 
-            h2 = figure(2);
-            %subplot(1,2,2)
-            box on
-            hold on
-            
-            plot(s_rds(1,:), s_rds(2,:), 'color',colorGreen, 'LineWidth', 3)
-            plot(s_rds(3,:), s_rds(4,:), 'color',colorGreen, 'LineWidth', 3)
-            plot(s_rds(5,:), s_rds(6,:), 'color',colorGreen, 'LineWidth', 3)
-            plot(s_rds(7,:), s_rds(8,:), 'color',colorGreen, 'LineWidth', 3)
-            
-            s_dem = cameraFeat{d};
+    h2 = subplot(1,2,2);
+    box on
+    hold on
+    title('Features position')
+ 
+    plot(sRds(1,:), sRds(2,:), 'color', colorGreen, 'LineWidth', 3)
+    plot(sRds(3,:), sRds(4,:), 'color', colorGreen, 'LineWidth', 3)
+    plot(sRds(5,:), sRds(6,:), 'color', colorGreen, 'LineWidth', 3)
+    plot(sRds(7,:), sRds(8,:), 'color', colorGreen, 'LineWidth', 3)
 
-            plot(s_dem(1,:), s_dem(2,:), 'k--', 'LineWidth', 3)
-            plot(s_dem(3,:), s_dem(4,:), 'k--', 'LineWidth', 3)
-            plot(s_dem(5,:), s_dem(6,:), 'k--', 'LineWidth', 3)
-            plot(s_dem(7,:), s_dem(8,:), 'k--', 'LineWidth', 3)
-        end    
-    end
+    sDem = cameraFeat{d};
 
-    %subplot(1,2,1)
-    plot(cameraPose{1}(2,end), cameraPose{1}(3,end), 'k.', 'MarkerSize', 30)
-    %axis([0.5 1.5 0.5 1.5])
-    axis square;
-    set(gca, 'XTick', [], 'YTick', []);
+    plot(sDem(1,1), sDem(2,1), 'ko', 'MarkerSize', 15, 'MarkerFaceColor', 'k')
+    plot(sDem(3,1), sDem(4,1), 'ko', 'MarkerSize', 15, 'MarkerFaceColor', 'k')
+    plot(sDem(5,1), sDem(6,1), 'ko', 'MarkerSize', 15, 'MarkerFaceColor', 'k')
+    plot(sDem(7,1), sDem(8,1), 'ko', 'MarkerSize', 15, 'MarkerFaceColor', 'k')
+    
+    plot(sDem(1,:), sDem(2,:), 'k--', 'LineWidth', 3)
+    plot(sDem(3,:), sDem(4,:), 'k--', 'LineWidth', 3)
+    plot(sDem(5,:), sDem(6,:), 'k--', 'LineWidth', 3)
+    plot(sDem(7,:), sDem(8,:), 'k--', 'LineWidth', 3)
 
-    % Plot goals
-    figure(2)
-    %subplot(1,2,2)
-    plot(s_star(1,:), s_star(2,:), 'k.', 'MarkerSize', 30)
-    plot(s_star(3,:), s_star(4,:), 'k.', 'MarkerSize', 30)
-    plot(s_star(5,:), s_star(6,:), 'k.', 'MarkerSize', 30)
-    plot(s_star(7,:), s_star(8,:), 'k.', 'MarkerSize', 30) 
-    %axis([200 500 200 500])
-    axis square;
-    set(gca, 'YDir','reverse', 'XTick', [], 'YTick', []);
-    ax = gca;
+    plot(sStar(1,:), sStar(2,:), 'kx', 'MarkerSize', 15, 'LineWidth', 3)
+    plot(sStar(3,:), sStar(4,:), 'kx', 'MarkerSize', 15, 'LineWidth', 3)
+    plot(sStar(5,:), sStar(6,:), 'kx', 'MarkerSize', 15, 'LineWidth', 3)
+    plot(sStar(7,:), sStar(8,:), 'kx', 'MarkerSize', 15, 'LineWidth', 3)
+    
+    set(h2, 'YDir','reverse');
+    ax = h2;
     ax.XLim = ax.XLim + [-10, 10];
     ax.YLim = ax.YLim + [-10, 10];
 end

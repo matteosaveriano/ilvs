@@ -41,10 +41,6 @@ options.upperBoundEigenValue = true; %This is also another added feature that is
                                      %When set to true, it forces the sum of eigenvalues of each P^l 
                                      %matrix to be equal one. 
 
-%% Camera and feature setup
-% Create a default camera (see 'CentralCamera' documentation)
-cam = CentralCamera('default');
-
 %% Create a dummy pinhole camera
 % Camera matrix
 KP = zeros(3,4);  
@@ -66,7 +62,7 @@ sInd = [1:samplingRate:demoSize demoSize]; % Use only points at 'sInd'
         
 % Retrieve point grid, goal depth, and sampling time
 P = demos{1}.point_grid;
-depth_goal = demos{1}.depth_goal; % Final depth
+depthGoal = demos{1}.depth_goal; % Final depth
 
 % Initialize some variables to store results
 pos = [];
@@ -91,19 +87,18 @@ for i=demoNum
     poseInitAll = [poseInitAll; demos{i}.pos(:,1)'];
 end
     
-demoLen = size(feat, 1);
+allDemoLen = size(feat, 1);
 featStar = mean(featStarAll);
 poseStar = mean(poseStarAll);
-featErr = feat - repmat(featStar, demoLen, 1);
-poseErr = zeros(demoLen, 6);
-uErr = zeros(demoLen, 6);
+featErr = feat - repmat(featStar, allDemoLen, 1);
+poseErr = zeros(allDemoLen, 6);
+uErr = zeros(allDemoLen, 6);
 
 % Compute image Jacobian at goal
-Lgoal = visualJacobianMatrix(reshape(featStar, 2, 4), depth_goal, KP);
-
+Lgoal = visualJacobianMatrix(reshape(featStar, 2, 4), depthGoal, KP);
 LpGoal = pinv(Lgoal);
 
-for i=1:demoLen
+for i=1:allDemoLen
     % Compute Lp*e for each point
     poseErr(i,:) = (LpGoal*featErr(i,:).').';
     % Desired control input is vel
@@ -139,7 +134,7 @@ kappa0 = 0.001;
 uClfHandle= @(y) DS_stabilizer(y, gmrHandle, Vxf, rho0, kappa0);
 
 %% Simulate
-demoLen = demoLen/length(demoNum); % Length of the single demonstration
+demoLen = allDemoLen/length(demoNum); % Length of the single demonstration
 sStar = featStar.'; % Goal in feature space
 Tcam = eye(4); % Initial pose of the dummy camera
 figure;
