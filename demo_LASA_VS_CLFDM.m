@@ -3,9 +3,6 @@
 %
 % The original code for CLF-DM is available at: 
 % https://bitbucket.org/khansari/clfdm/src/master/
-%
-% This function uses the Machine Vision Toolbox v4.2.1 from P. Corke
-% See: https://petercorke.com/toolboxes/machine-vision-toolbox/
 
 %%
 clear;
@@ -21,7 +18,7 @@ Vxf0.w = 1e-4; %A positive scalar weight regulating the priority between the
                %page 7 of the paper for further information.
 
 % A set of options that will be passed to the solver. Please type 
-% 'doc preprocess_demos' in the MATLAB command window to get detailed
+% 'doc preprocessDemos' in the MATLAB command window to get detailed
 % information about other possible options.
 options.tol_mat_bias = 10^-1; % a very small positive scalar to avoid
                               % having a zero eigen value in matrices P^l [default: 10^-15]
@@ -47,9 +44,17 @@ options.upperBoundEigenValue = true; %This is also another added feature that is
 %% Camera and feature setup
 % Create a default camera (see 'CentralCamera' documentation)
 cam = CentralCamera('default');
+
+%% Create a dummy pinhole camera
+% Camera matrix
+KP = zeros(3,4);  
+KP(1,1) = 800;
+KP(2,2) = 800;
+KP(3,3) = 1;
+KP(1:2,3) = 512;
           
 %% Learning and reproduction loop
-motionClass = 5; % Which of the 30 motions to use
+motionClass = 7; % Which of the 30 motions to use
 demoNum = 1:3; % Consider only the first 3 demonstrations
 samplingRate = 10; % Resample the trajectory to make learning faster
 
@@ -94,7 +99,8 @@ poseErr = zeros(demoLen, 6);
 uErr = zeros(demoLen, 6);
 
 % Compute image Jacobian at goal
-Lgoal = cam.visjac_p(reshape(featStar, 2, 4), depth_goal);
+Lgoal = visualJacobianMatrix(reshape(featStar, 2, 4), depth_goal, KP);
+
 LpGoal = pinv(Lgoal);
 
 for i=1:demoLen
@@ -130,73 +136,83 @@ end
 rho0 = 0.01;
 kappa0 = 0.001;
     
-u_clf_handle= @(y) DS_stabilizer(y, gmrHandle, Vxf, rho0, kappa0);
+uClfHandle= @(y) DS_stabilizer(y, gmrHandle, Vxf, rho0, kappa0);
 
 %% Simulate
-demo_len = demoLen/length(demoNum); % Length of the single demonstration
-s_star = featStar.'; % Goal in feature space
+demoLen = demoLen/length(demoNum); % Length of the single demonstration
+sStar = featStar.'; % Goal in feature space
+Tcam = eye(4); % Initial pose of the dummy camera
 figure;
 for d=demoNum
-    p_clfdm = zeros(3, demo_len);
-    p_clfdm(:,1) = poseInitAll(d,1:3)';
-    v_clfdm = [0, 0, 0, 0, 0, 0]';
-    u_clfdm = zeros(6,demo_len-1);
-
-    cam.T = SE3(p_clfdm(1,1), p_clfdm(2,1), p_clfdm(3,1));
-    error = zeros(demo_len-1, 8);
-    s_clfdm = zeros(8, demo_len-1);    
-    for i=1:demo_len-1 % Run a bit longer to test for convergence
-        s_curr = cam.project(P);
-
+    pClfdm = zeros(3, demoLen);
+    pClfdm(:,1) = poseInitAll(d,1:3)';
+    vClfdm = zeros(6, demoLen);
+    % Update camera position (orientation is fixed)   
+    Tcam(1:3,4) = [pClfdm(1,1); pClfdm(2,1); pClfdm(3,1)];
+    
+    error = zeros(demoLen-1, 8);
+    sClfdm = zeros(8, demoLen-1);    
+    for i=1:demoLen-1 % Run a bit longer to test for convergence
+        % Project to image plane
+        sCurr = cameraPoseToImagePoints(Tcam, P, KP);
         % Store features for plotting
-        s_clfdm(:,i) = reshape(s_curr, 8, 1);
+        sClfdm(:,i) = reshape(sCurr, 8, 1);
+        % Compute image error
+        error(i,:) = reshape(sCurr, 8, 1) - sStar;
+        % Compute CLFDM velocity
+        vClfdm(:,i) = uClfHandle(LpGoal*error(i,:)');
 
-        error(i,:) = reshape(s_curr, 8, 1) - s_star;
-
-        u_clfdm(:,i) = u_clf_handle(LpGoal*error(i,:)');
-
-        v_clfdm(:,i) = u_clfdm(:,i);
-
-        % Update camera pose
-        cam.T = cam.T.increment(v_clfdm(:,i)*dt_);
-        p_clfdm(:, i+1) = cam.T.t;
+        % Update camera position (orientation is fixed)
+        Tcam(1:3,4) = Tcam(1:3,4) + vClfdm(1:3,i)*dt_;
+        pClfdm(:, i+1) = Tcam(1:3,4);
     end
-    v_clfdm(:,end+1) = [0, 0, 0, 0, 0, 0]';
 
     %% Plot results
-    subplot(1,2,1)
+    colorGreen = [0 127 0]/255;
+    
+    h1 = subplot(1,2,1);
     title('Cartesian position')
-    plot(p_clfdm(1,:), p_clfdm(2,:), 'b')
+    plot(pClfdm(1,:), pClfdm(2,:), 'color', colorGreen, 'LineWidth', 3)
     hold on
     
-    plot(cameraPose{d}(1,1), cameraPose{d}(2,1), 'ko')
-    plot(cameraPose{d}(1,:), cameraPose{d}(2,:), 'k')
-    plot(cameraPose{d}(1,end), cameraPose{d}(2,end), 'kx')
+    plot(cameraPose{d}(1,1), cameraPose{d}(2,1), 'ko', 'MarkerSize', 15, 'MarkerFaceColor', 'k')
+    plot(cameraPose{d}(1,:), cameraPose{d}(2,:), 'k--', 'LineWidth', 3)
+    plot(cameraPose{d}(1,end), cameraPose{d}(2,end), 'kx', 'MarkerSize', 15, 'LineWidth', 3)
+    
+    set(h1, 'YDir','reverse');
+    ax = h1;
+    ax.XLim = ax.XLim + [-.1, .1];
+    ax.YLim = ax.YLim + [-.1, .1];
 
-    subplot(1,2,2)
+    h2 = subplot(1,2,2);
     box on
     hold on
     title('Features position')
  
-    plot(s_clfdm(1,:), s_clfdm(2,:), 'b')
-    plot(s_clfdm(3,:), s_clfdm(4,:), 'b')
-    plot(s_clfdm(5,:), s_clfdm(6,:), 'b')
-    plot(s_clfdm(7,:), s_clfdm(8,:), 'b')
+    plot(sClfdm(1,:), sClfdm(2,:), 'color', colorGreen, 'LineWidth', 3)
+    plot(sClfdm(3,:), sClfdm(4,:), 'color', colorGreen, 'LineWidth', 3)
+    plot(sClfdm(5,:), sClfdm(6,:), 'color', colorGreen, 'LineWidth', 3)
+    plot(sClfdm(7,:), sClfdm(8,:), 'color', colorGreen, 'LineWidth', 3)
 
-    s_dem = cameraFeat{d};
+    sDem = cameraFeat{d};
 
-    plot(s_dem(1,1), s_dem(2,1), 'ko')
-    plot(s_dem(3,1), s_dem(4,1), 'ko')
-    plot(s_dem(5,1), s_dem(6,1), 'ko')
-    plot(s_dem(7,1), s_dem(8,1), 'ko')
+    plot(sDem(1,1), sDem(2,1), 'ko', 'MarkerSize', 15, 'MarkerFaceColor', 'k')
+    plot(sDem(3,1), sDem(4,1), 'ko', 'MarkerSize', 15, 'MarkerFaceColor', 'k')
+    plot(sDem(5,1), sDem(6,1), 'ko', 'MarkerSize', 15, 'MarkerFaceColor', 'k')
+    plot(sDem(7,1), sDem(8,1), 'ko', 'MarkerSize', 15, 'MarkerFaceColor', 'k')
     
-    plot(s_dem(1,:), s_dem(2,:), 'k')
-    plot(s_dem(3,:), s_dem(4,:), 'k')
-    plot(s_dem(5,:), s_dem(6,:), 'k')
-    plot(s_dem(7,:), s_dem(8,:), 'k')
+    plot(sDem(1,:), sDem(2,:), 'k--', 'LineWidth', 3)
+    plot(sDem(3,:), sDem(4,:), 'k--', 'LineWidth', 3)
+    plot(sDem(5,:), sDem(6,:), 'k--', 'LineWidth', 3)
+    plot(sDem(7,:), sDem(8,:), 'k--', 'LineWidth', 3)
 
-    plot(s_star(1,:), s_star(2,:), 'kx')
-    plot(s_star(3,:), s_star(4,:), 'kx')
-    plot(s_star(5,:), s_star(6,:), 'kx')
-    plot(s_star(7,:), s_star(8,:), 'kx')
+    plot(sStar(1,:), sStar(2,:), 'kx', 'MarkerSize', 15, 'LineWidth', 3)
+    plot(sStar(3,:), sStar(4,:), 'kx', 'MarkerSize', 15, 'LineWidth', 3)
+    plot(sStar(5,:), sStar(6,:), 'kx', 'MarkerSize', 15, 'LineWidth', 3)
+    plot(sStar(7,:), sStar(8,:), 'kx', 'MarkerSize', 15, 'LineWidth', 3)
+    
+    set(h2, 'YDir','reverse');
+    ax = h2;
+    ax.XLim = ax.XLim + [-10, 10];
+    ax.YLim = ax.YLim + [-10, 10];
 end
