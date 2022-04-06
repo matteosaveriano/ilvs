@@ -4,7 +4,7 @@ This package provides code and a dataset to test imitation learning approaches o
 It also implements two of the approaches described in [(Paolillo and Saveriano, 2022)](https://arxiv.org/pdf/xxx.pdf) to embed a visual seervoing task into stable dynamical systems.
 
 ## Demos description
-- `augment_LASA_dataset.m`: a script to augment the LASA Handwritten dataset with image features.
+- `augment_LASA_dataset.m`: a script to augment the [LASA Handwriting dataset](https://bitbucket.org/khansari/lasahandwritingdataset) with image features.
 - `demo_LASA_VS_CLFDM.m`: a demo to run [CLFDM](https://www.sciencedirect.com/science/article/pii/S0921889014000372) on the augmented LASA Handwritten dataset.
 - `demo_LASA_VS_RDS.m`: a demo to run [RDS](https://ieeexplore.ieee.org/document/8594474) on the augmente LASA Handwritten dataset.
 
@@ -25,7 +25,7 @@ Please acknowledge the authors in any academic publication that used parts of th
 ## Third-party material
 Third-party code and dataset have been included in this repository for convenience.
 
-- **LASA Handwritten dataset**: please acknowledge the authors in any academic publications that have made use of the LASA HandWritten dataset by citing: *S. M. Khansari-Zadeh and A. Billard, "Learning Stable Non-Linear Dynamical Systems with Gaussian Mixture Models", IEEE Transaction on Robotics, 2011*.
+- **LASA Handwriting dataset**: please acknowledge the authors in any academic publications that have made use of the LASA HandWritten dataset by citing: *S. M. Khansari-Zadeh and A. Billard, "Learning Stable Non-Linear Dynamical Systems with Gaussian Mixture Models", IEEE Transaction on Robotics, 2011*.
 
 - **GMR**: please acknowledge the authors in any academic publications that have made use of the GMR library by citing: *S. Calinon et al., "On Learning, Representing and Generalizing a Task in a Humanoid Robot", IEEE Transactions on Systems, Man and Cybernetics, Part B., 2006*.
 
