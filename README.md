@@ -4,7 +4,7 @@ This package provides code and a dataset to test imitation learning approaches o
 It also implements two of the approaches described in [(Paolillo and Saveriano, 2022)](https://arxiv.org/pdf/xxx.pdf) to embed a visual seervoing task into stable dynamical systems.
 
 ## Demos description
-- `augment_LASA_dataset.m`: code to augment the LASA Handwritten dataset with image features.
+- `augment_LASA_dataset.m`: a script to augment the LASA Handwritten dataset with image features.
 - `demo_LASA_VS_CLFDM.m`: a demo to run CLFDM on the augmented LASA Handwritten dataset.
 - `demo_LASA_VS_RDS.m`: a demo to run RDS on the augmente LASA Handwritten dataset.
 
