@@ -1,7 +1,7 @@
 # ILVS - Imitation Learning for Visual Servoing
 This package provides code and a dataset to test imitation learning approaches on an image-based visual servoing benchmark.
 
-It also implements two of the approaches described in [(Paolillo and Saveriano, 2022)](https://arxiv.org/pdf/xxx.pdf) to embed a visual seervoing task into stable dynamical systems.
+It also implements two of the approaches described in [(Paolillo and Saveriano, 2022)](https://arxiv.org/abs/2204.05681) to embed a visual seervoing task into stable dynamical systems.
 
 ## Demos description
 - `augment_LASA_dataset.m`: a script to augment the [LASA Handwriting dataset](https://bitbucket.org/khansari/lasahandwritingdataset) with image features.
