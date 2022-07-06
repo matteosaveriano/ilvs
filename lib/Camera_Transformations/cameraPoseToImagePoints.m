@@ -3,7 +3,7 @@
 % NOTE: orientation is expressed in Euler angles or rotation matrix
 % (X-Y-Z around the inertial frame of reference)
 
-function points = cameraPoseToImagePoints(pose, initial3DPts, KP)
+function [points, depth] = cameraPoseToImagePoints(pose, initial3DPts, KP)
     if nargin < 3
         KP = zeros(3,4);
         KP(1:3,1:3) = eye(3,3);
@@ -22,6 +22,8 @@ function points = cameraPoseToImagePoints(pose, initial3DPts, KP)
     B3D_cam = R'*(initial3DPts(:,2)-r);
     C3D_cam = R'*(initial3DPts(:,3)-r);
     D3D_cam = R'*(initial3DPts(:,4)-r);
+    
+    depth = [A3D_cam(3), B3D_cam(3), C3D_cam(3), D3D_cam(3)];
     
     % Homogeneous coordinates of the points on the image
     A3D_hom = KP * [A3D_cam; 1];

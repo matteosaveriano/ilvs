@@ -17,7 +17,7 @@ KP(3,3) = 1;
 KP(1:2,3) = 512;
           
 %% Learning and reproduction loop
-motionClass = 7; % Which of the 30 motions to use
+motionClass = 26; % Which of the 30 motions to use
 demoNum = 1:3; % Consider only the first 3 demonstrations
 samplingRate = 10; % Resample the trajectory to make learning faster
 
@@ -120,7 +120,7 @@ for d=demoNum
         vRds(:,i) = -lambda_* LpGoal *e_ + uRds(:,i);
             
         % Update camera pose
-         Tcam(1:3,4) = Tcam(1:3,4) + vRds(1:3,i)*dt_;
+        Tcam(1:3,4) = Tcam(1:3,4) + vRds(1:3,i)*dt_;
         pRds(:, i+1) =Tcam(1:3,4);
     end
         
